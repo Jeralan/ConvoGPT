@@ -40,7 +40,7 @@ def main(argv: list[str]):
                                                 temperature=temperature,
                                                 max_tokens=maxTokens)
             response = response.choices[0].text.strip()
-            response = response.split(username)[0].strip()
+            response = response.split(username+":")[0].strip()
             convo += response+f"\n{username}: "
             print(f"{botname}: {response}")
         userIn = input(convo.split("\n")[-1])
