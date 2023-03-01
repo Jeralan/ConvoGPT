@@ -1,6 +1,9 @@
 import openai
 import sys, getopt, os
 
+helpString = '''/exit - exit and save conversation
+/c <text> - replace last bot response with text'''
+
 def main(argv: list[str]):
     file = "openAIkey.txt"
     opts, args = getopt.getopt(argv,"hk:",["key="])
@@ -24,6 +27,7 @@ def main(argv: list[str]):
         botrole = input(f"Conversation between {username} and ")
         convo = f"The following is a text conversation between {username} and {botrole}\n{username}: "
     print(convo.split("\n")[-2])
+    print("(/h to view all available commands)")
     userIn = input(convo.split("\n")[-1])
     model_engine = "text-davinci-003"
     temperature = 0.5
@@ -33,6 +37,8 @@ def main(argv: list[str]):
             splitConvo = convo.split("\n")
             print(f"{botname}: {userIn[2:].strip()}")
             convo = "\n".join(splitConvo[:-2]+[f"{botname}: {userIn[2:].strip()}"]+splitConvo[-1:])
+        elif userIn[:2] == "/h":
+            print(helpString)
         else:
             convo += userIn+f"\n{botname}: "
             response = openai.Completion.create(engine=model_engine,
