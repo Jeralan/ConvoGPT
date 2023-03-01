@@ -1,6 +1,6 @@
 # ConvoGPT
 ## Usage:
-python ConvoGPT.py -k <txt file with openAI key>
+python ConvoGPT.py -k [txt file with openAI key]
 ## Current Features:
 - Talk to any famous person or known role and correct incorrect responses
 - Talk to any person of your choosing with enough conversation context
