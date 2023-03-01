@@ -22,21 +22,27 @@ def main(argv: list[str]):
     else:
         print("Specify the bot's role")
         botrole = input(f"Conversation between {username} and ")
-        convo = f"{username} is talking to {botrole}\n{username}: "
+        convo = f"The following is a text conversation between {username} and {botrole}\n{username}: "
     print(convo.split("\n")[-2])
     userIn = input(convo.split("\n")[-1])
     model_engine = "text-davinci-003"
     temperature = 0.5
     maxTokens = 250
-    while not ("\exit" in userIn):
-        convo += userIn+f"\n{botname}: "
-        response = openai.Completion.create(engine=model_engine,
-                                            prompt=convo,
-                                            temperature=temperature,
-                                            max_tokens=maxTokens)
-        response = response.choices[0].text.strip()
-        convo += response+f"\n{username}: "
-        print(f"{botname}: {response}")
+    while not ("/exit" in userIn):
+        if userIn[:2] == "/c":
+            splitConvo = convo.split("\n")
+            print(f"{botname}: {userIn[2:].strip()}")
+            convo = "\n".join(splitConvo[:-2]+[f"{botname}: {userIn[2:].strip()}"]+splitConvo[-1:])
+        else:
+            convo += userIn+f"\n{botname}: "
+            response = openai.Completion.create(engine=model_engine,
+                                                prompt=convo,
+                                                temperature=temperature,
+                                                max_tokens=maxTokens)
+            response = response.choices[0].text.strip()
+            response = response.split(username)[0].strip()
+            convo += response+f"\n{username}: "
+            print(f"{botname}: {response}")
         userIn = input(convo.split("\n")[-1])
     f = open(filename, "w")
     f.write(convo)
