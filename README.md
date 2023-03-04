@@ -5,6 +5,7 @@ python ConvoGPT.py -k [txt file with openAI key]
 - Talk to any famous person or known role and correct incorrect responses
 - Talk to any person of your choosing with enough conversation context
 ## Future Goals (in no particular order):
+- **Minimize token usage for cost savings**
 - More sophisticated summarization for working around token limit
 - Talking to multiple bots
 - Creating bots of users or common entities from aggregated conversations

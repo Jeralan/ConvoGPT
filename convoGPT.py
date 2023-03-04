@@ -5,7 +5,7 @@ helpString = '''/exit - exit and save conversation
 /c <text> - replace last bot response with text'''
 
 def getResponse(convo: str, username: str) -> tuple[str,str]:
-    model_engine = "text-davinci-003"
+    model_engine = "davinci"
     temperature = 0.5
     maxTokens = 250
     response = None
@@ -15,8 +15,6 @@ def getResponse(convo: str, username: str) -> tuple[str,str]:
                                                     prompt=convo,
                                                     temperature=temperature,
                                                     max_tokens=maxTokens)
-        response = response.choices[0].text.strip()
-        response = response.split(username+":")[0].strip()
     except openai.error.InvalidRequestError:
         splitConvo = convo.split("\n")
         firstHalfConvo = "\n".join(splitConvo[:len(splitConvo)//2])
@@ -32,8 +30,8 @@ def getResponse(convo: str, username: str) -> tuple[str,str]:
                                                     prompt=convo,
                                                     temperature=temperature,
                                                     max_tokens=maxTokens)
-        response = response.choices[0].text.strip()
-        response = response.split(username+":")[0].strip()
+    response = response.choices[0].text.strip()
+    response = response.split(username+":")[0].strip()
     convo += response+f"\n{username}: "
     return convo,response
 
