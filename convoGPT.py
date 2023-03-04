@@ -1,39 +1,67 @@
 import openai
+import tiktoken 
 import sys, getopt, os
+from convoStrings import *
 
-helpString = '''/exit - exit and save conversation
-/c <text> - replace last bot response with text'''
+def tokenCount(encoding,convo):
+    return len(encoding.encode(convo))
 
-def getResponse(convo: str, username: str) -> tuple[str,str]:
-    model_engine = "davinci"
+def removeLastLine(convo):
+    splitConvo = convo.split("\n")
+    lastLine = splitConvo[-1]
+    return "\n".join(splitConvo[:-1]),lastLine
+
+def summarize(model, encoding, convo, botname):
+    convo,lastLine = removeLastLine(convo)
+    savedLines = lastLine
+    maxTokens = 250
+    tokens = maxTokens
+    tokens += 4+tokenCount(encoding,SYSTEM_SUMMARY+botname)
+    tokens += 4+tokenCount(encoding,convo)
+    tokens += 2
+    while tokens > 4096:
+        convo,lastLine = removeLastLine(convo)
+        savedLines = lastLine+"\n"+savedLines
+        tokens -= tokenCount(encoding,lastLine)+1
+    response = openai.ChatCompletion.create(
+        model=model,
+        messages = [
+        {"role":"system","content":SYSTEM_SUMMARY+botname},
+        {"role":"user","content":convo}
+        ]
+    )
+    #TODO: add transition from summarization to conversation
+    #TODO: consider always keeping at least 2 previous messages to 
+    ###### establish the conversation format
+    return response.choices[0]["message"]["content"]+"\n"+savedLines
+
+def getResponse(convo: str, username: str, botname: str, model: str, sumModel: str, encoding, sumEncoding) -> tuple[str,str]:
     temperature = 0.5
     maxTokens = 250
-    response = None
-    savedLines = ""
-    try:
-        response = openai.Completion.create(engine=model_engine,
-                                                    prompt=convo,
-                                                    temperature=temperature,
-                                                    max_tokens=maxTokens)
-    except openai.error.InvalidRequestError:
-        splitConvo = convo.split("\n")
-        firstHalfConvo = "\n".join(splitConvo[:len(splitConvo)//2])
-        secondHalfConvo = "\n".join(splitConvo[len(splitConvo)//2:])
-        summaryPrompt = firstHalfConvo+"\n\nSo to describe this conversation in summary:\n"
-        summary = openai.Completion.create(engine=model_engine,
-                                                    prompt=summaryPrompt,
-                                                    temperature=temperature,
-                                                    max_tokens=maxTokens)
-        summary = summary.choices[0].text.strip()
-        convo = "So a summary of the conversation so far is:\n"+summary+"\n\nThe conversation then continued as follows:\n\n"+secondHalfConvo
-        response = openai.Completion.create(engine=model_engine,
-                                                    prompt=convo,
-                                                    temperature=temperature,
-                                                    max_tokens=maxTokens)
+    #TODO: cache token counting, this seems quite slow
+    requestTokens = tokenCount(encoding,convo)+maxTokens
+    while requestTokens > 2049:
+        convo = summarize(sumModel, sumEncoding, convo, botname)
+        requestTokens = tokenCount(encoding,convo)+maxTokens
+    response = openai.Completion.create(engine=model,
+                                                prompt=convo,
+                                                temperature=temperature,
+                                                max_tokens=maxTokens)
     response = response.choices[0].text.strip()
     response = response.split(username+":")[0].strip()
     convo += response+f"\n{username}: "
     return convo,response
+
+def readFile(filename):
+    f = open(filename,"r")
+    out = f.read()
+    f.close()
+    return out
+
+def getName(entity: str) -> tuple[str,str]:
+    fullName = input(f"{entity} name: ")
+    first = fullName.split(" ")[0]
+    return fullName,first
 
 def main(argv: list[str]):
     file = "openAIkey.txt"
@@ -43,34 +71,36 @@ def main(argv: list[str]):
             print("convoGPT.py -k <OpenAI key file>")
         elif opt in ("k","--key"):
             file = arg
-    f = open(file,"r")
-    openai.api_key = f.read().strip()
-    f.close()
-    username = input("User name: ")
-    botname = input("Bot name: ")
+    openai.api_key = readFile(file).strip()
+    username,userFirst = getName("User")
+    botname,botFirst = getName("Bot")
     filename = f"{username}-{botname}"
     if os.path.exists(filename):
-        f = open(filename, "r")
-        convo = f.read()
-        f.close()
+        convo = readFile(filename)
     else:
-        print("Specify the bot's role")
-        botrole = input(f"Conversation between {username} and ")
-        convo = f"The following is a text conversation between {username} and {botrole}\n{username}: "
-    print(convo.split("\n")[-2])
-    print("(/h to view all available commands)")
+        #TODO: optimize and add specific instructions for this
+        botrole = input(f"Intro string: Conversation between {username} and ")
+        convo = f"{username} is talking to {botrole}\n{userFirst}: "
+    print(convo)
+    print(START)
     userIn = input(convo.split("\n")[-1])
+    model = "davinci"
+    sumModel = "gpt-3.5-turbo"
+    encoding = tiktoken.encoding_for_model(model)
+    sumEncoding = tiktoken.encoding_for_model(sumModel)
     while not ("/exit" in userIn):
         if userIn[:2] == "/c":
             splitConvo = convo.split("\n")
-            print(f"{botname}: {userIn[2:].strip()}")
-            convo = "\n".join(splitConvo[:-2]+[f"{botname}: {userIn[2:].strip()}"]+splitConvo[-1:])
+            convo = splitConvo[:-2]
+            print(f"{botFirst}: {userIn[2:].strip()}")
+            convo += [f"{botFirst}: {userIn[2:].strip()}"]+splitConvo[-1:]
+            convo = "\n".join(convo)
         elif userIn[:2] == "/h":
-            print(helpString)
+            print(HELP)
         else:
-            convo += userIn+f"\n{botname}: "
-            convo,response = getResponse(convo,username)
-            print(f"{botname}: {response}")
+            convo += userIn+f"\n{botFirst}: "
+            convo,response = getResponse(convo,userFirst,botname,model,sumModel,encoding,sumEncoding)
+            print(f"{botFirst}: {response}")
         userIn = input(convo.split("\n")[-1])
     f = open(filename, "w")
     f.write(convo)
