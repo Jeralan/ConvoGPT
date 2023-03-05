@@ -7,9 +7,11 @@ def tokenCount(encoding,convo):
     return len(encoding.encode(convo))
 
 def removeLastLines(convo):
+    n = 3
     splitConvo = convo.split("\n")
-    lastLines = "\n".join(splitConvo[-2:])
-    return "\n".join(splitConvo[:-1]),lastLines
+    lastLines = "\n".join(splitConvo[-n:])
+    #now keeps last n lines
+    return "\n".join(splitConvo[:-n]),lastLines
 
 def summarizeTokens(encoding, convo, botname):
     convo,lastLine = removeLastLines(convo)
@@ -17,26 +19,25 @@ def summarizeTokens(encoding, convo, botname):
     tokens = maxTokens
     tokens += 4+tokenCount(encoding,SYSTEM_SUMMARY+botname)
     tokens += 4+tokenCount(encoding,convo)
+    tokens += 4+tokenCount(encoding,SUMMARY_PROMPT)
     tokens += 2
     return tokens,lastLine
 
 def summarize(model, encoding, convo, botname):
-    tokens,savedLines = summarizeTokens(encoding,convo,botname)
-    while tokens > 4096:
-        convo,lastLine = removeLastLines(convo)
-        savedLines = lastLine+"\n"+savedLines
-        tokens -= tokenCount(encoding,lastLine)+1
+    #tokens,savedLines = summarizeTokens(encoding,convo,botname)
+    convo,savedLines = removeLastLines(convo)
+    #savedLines = lastLine+"\n"+savedLines
+    #tokens -= tokenCount(encoding,lastLine)+1
     response = openai.ChatCompletion.create(
         model=model,
         messages = [
         {"role":"system","content":SYSTEM_SUMMARY+botname},
-        {"role":"user","content":convo}
-        ]
+        {"role":"user","content":convo},
+        {"role":"user","content":SUMMARY_PROMPT}
+        ],
+        max_tokens=250
     )
-    #TODO: add transition from summarization to conversation
-    #TODO: consider always keeping at least 2 previous messages to 
-    ###### establish the conversation format
-    return response.choices[0]["message"]["content"]+"\n"+savedLines
+    return SUMMARY_HEADER+response.choices[0]["message"]["content"]+SUMMARY_TRANSITION+savedLines
 
 def getResponse(convo: str, username: str, botname: str, model: str, sumModel: str, encoding, sumEncoding) -> tuple[str,str]:
     temperature = 0.5
@@ -46,15 +47,17 @@ def getResponse(convo: str, username: str, botname: str, model: str, sumModel: s
     reqCost = MODEL_COST[model]
     sumTokens,lastLine = summarizeTokens(sumEncoding, convo, botname)
     sumReqCost = sumTokens*sumCost
-    sumReqCost += (250+1+tokenCount(encoding,lastLine))*reqCost
+    sumReqCost += (maxTokens+tokenCount(encoding,SUMMARY_HEADER+SUMMARY_TRANSITION+lastLine))*reqCost
+    sumReqCost += maxTokens*reqCost
     fullReqCost = requestTokens*reqCost
-    while requestTokens > 2049 or (sumReqCost < fullReqCost and len(convo.split("\n")) > 3):
-        print("summarizing")
+    while requestTokens > 2049 or (sumReqCost < fullReqCost): 
+        print(requestTokens,sumReqCost,fullReqCost)
         convo = summarize(sumModel, sumEncoding, convo, botname)
         requestTokens = tokenCount(encoding,convo)+maxTokens
         sumTokens,lastLine = summarizeTokens(sumEncoding, convo, botname)
         sumReqCost = sumTokens*sumCost
-        sumReqCost += (250+1+tokenCount(encoding,lastLine))*reqCost
+        sumReqCost += (maxTokens+tokenCount(encoding,SUMMARY_HEADER+SUMMARY_TRANSITION+lastLine))*reqCost
+        sumReqCost += maxTokens*reqCost #cost of final request output
         fullReqCost = requestTokens*reqCost
     response = openai.Completion.create(engine=model,
                                                 prompt=convo,
@@ -95,9 +98,7 @@ def main(argv: list[str]):
         #TODO: optimize and add specific instructions for this
         botrole = input(f"Intro string: Conversation between {username} and ")
         convo = f"{username} is talking to {botrole}\n{userFirst}: "
-    print(convo)
-    print(START)
-    userIn = input(convo.split("\n")[-1])
+    userIn = input(convo)
     model = "davinci"
     sumModel = "gpt-3.5-turbo"
     encoding = tiktoken.encoding_for_model(model)
@@ -111,6 +112,8 @@ def main(argv: list[str]):
             convo = "\n".join(convo)
         elif userIn[:2] == "/h":
             print(HELP)
+        elif userIn[:2] == "/p":
+            print(convo)
         else:
             convo += userIn+f"\n{botname}: "
             convo,response = getResponse(convo,userFirst,botname,model,sumModel,encoding,sumEncoding)
