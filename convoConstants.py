@@ -3,7 +3,7 @@ HELP = '''/exit - exit and save conversation
 /c <text> - replace last bot response with text'''
 SYSTEM_SUMMARY = "You are to summarize chats with the minimum token count so that a language model can continue that chat as "
 START = "(/h to view all available commands)"
-SUMMARY_PROMPT = "Summarize that chat in past tense with the minimum token count so that a language model can continue that chat"
+SUMMARY_PROMPT = "Provide an updated summary of that chat in past tense with the minimum token count so that a language model can continue that chat"
 SUMMARY_HEADER = "Summary of conversation so far: "
 SUMMARY_TRANSITION = "\nThe conversation then continues:\n"
 MODEL_COST = {

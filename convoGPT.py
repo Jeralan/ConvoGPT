@@ -7,7 +7,7 @@ def tokenCount(encoding,convo):
     return len(encoding.encode(convo))
 
 def removeLastLines(convo):
-    n = 3
+    n = 8
     splitConvo = convo.split("\n")
     lastLines = "\n".join(splitConvo[-n:])
     #now keeps last n lines
@@ -15,7 +15,7 @@ def removeLastLines(convo):
 
 def summarizeTokens(encoding, convo, botname):
     convo,lastLine = removeLastLines(convo)
-    maxTokens = 250
+    maxTokens = 105
     tokens = maxTokens
     tokens += 4+tokenCount(encoding,SYSTEM_SUMMARY+botname)
     tokens += 4+tokenCount(encoding,convo)
@@ -24,10 +24,7 @@ def summarizeTokens(encoding, convo, botname):
     return tokens,lastLine
 
 def summarize(model, encoding, convo, botname):
-    #tokens,savedLines = summarizeTokens(encoding,convo,botname)
     convo,savedLines = removeLastLines(convo)
-    #savedLines = lastLine+"\n"+savedLines
-    #tokens -= tokenCount(encoding,lastLine)+1
     response = openai.ChatCompletion.create(
         model=model,
         messages = [
@@ -35,13 +32,14 @@ def summarize(model, encoding, convo, botname):
         {"role":"user","content":convo},
         {"role":"user","content":SUMMARY_PROMPT}
         ],
-        max_tokens=250
+        max_tokens=105
     )
-    return SUMMARY_HEADER+response.choices[0]["message"]["content"]+SUMMARY_TRANSITION+savedLines
+    response = response.choices[0]["message"]["content"].split("\n")[0]
+    return SUMMARY_HEADER+response+SUMMARY_TRANSITION+savedLines
 
 def getResponse(convo: str, username: str, botname: str, model: str, sumModel: str, encoding, sumEncoding) -> tuple[str,str]:
     temperature = 0.5
-    maxTokens = 250
+    maxTokens = 76
     requestTokens = tokenCount(encoding,convo)+maxTokens
     sumCost = MODEL_COST[sumModel]
     reqCost = MODEL_COST[model]
@@ -51,7 +49,6 @@ def getResponse(convo: str, username: str, botname: str, model: str, sumModel: s
     sumReqCost += maxTokens*reqCost
     fullReqCost = requestTokens*reqCost
     while requestTokens > 2049 or (sumReqCost < fullReqCost): 
-        print(requestTokens,sumReqCost,fullReqCost)
         convo = summarize(sumModel, sumEncoding, convo, botname)
         requestTokens = tokenCount(encoding,convo)+maxTokens
         sumTokens,lastLine = summarizeTokens(sumEncoding, convo, botname)
@@ -95,7 +92,6 @@ def main(argv: list[str]):
     if os.path.exists(filename):
         convo = readFile(filename)
     else:
-        #TODO: optimize and add specific instructions for this
         botrole = input(f"Intro string: Conversation between {username} and ")
         convo = f"{username} is talking to {botrole}\n{userFirst}: "
     userIn = input(convo)
