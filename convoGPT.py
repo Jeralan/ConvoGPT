@@ -1,80 +1,11 @@
 import openai
-import tiktoken 
-import sys, getopt, os
+import sys, getopt
+from utils import *
+from Convo import Convo
 from convoConstants import *
 
-def tokenCount(encoding,convo):
-    return len(encoding.encode(convo))
-
-def removeLastLines(convo):
-    n = 8
-    splitConvo = convo.split("\n")
-    lastLines = "\n".join(splitConvo[-n:])
-    #now keeps last n lines
-    return "\n".join(splitConvo[:-n]),lastLines
-
-def summarizeTokens(encoding, convo, botname):
-    convo,lastLine = removeLastLines(convo)
-    maxTokens = 105
-    tokens = maxTokens
-    tokens += 4+tokenCount(encoding,SYSTEM_SUMMARY+botname)
-    tokens += 4+tokenCount(encoding,convo)
-    tokens += 4+tokenCount(encoding,SUMMARY_PROMPT)
-    tokens += 2
-    return tokens,lastLine
-
-def summarize(model, encoding, convo, botname):
-    convo,savedLines = removeLastLines(convo)
-    response = openai.ChatCompletion.create(
-        model=model,
-        messages = [
-        {"role":"system","content":SYSTEM_SUMMARY+botname},
-        {"role":"user","content":convo},
-        {"role":"user","content":SUMMARY_PROMPT}
-        ],
-        max_tokens=105
-    )
-    response = response.choices[0]["message"]["content"].split("\n")[0]
-    return SUMMARY_HEADER+response+SUMMARY_TRANSITION+savedLines
-
-def getResponse(convo: str, username: str, botname: str, model: str, sumModel: str, encoding, sumEncoding) -> tuple[str,str]:
-    temperature = 0.5
-    maxTokens = 76
-    requestTokens = tokenCount(encoding,convo)+maxTokens
-    sumCost = MODEL_COST[sumModel]
-    reqCost = MODEL_COST[model]
-    sumTokens,lastLine = summarizeTokens(sumEncoding, convo, botname)
-    sumReqCost = sumTokens*sumCost
-    sumReqCost += (maxTokens+tokenCount(encoding,SUMMARY_HEADER+SUMMARY_TRANSITION+lastLine))*reqCost
-    sumReqCost += maxTokens*reqCost
-    fullReqCost = requestTokens*reqCost
-    while requestTokens > 2049 or (sumReqCost < fullReqCost): 
-        convo = summarize(sumModel, sumEncoding, convo, botname)
-        requestTokens = tokenCount(encoding,convo)+maxTokens
-        sumTokens,lastLine = summarizeTokens(sumEncoding, convo, botname)
-        sumReqCost = sumTokens*sumCost
-        sumReqCost += (maxTokens+tokenCount(encoding,SUMMARY_HEADER+SUMMARY_TRANSITION+lastLine))*reqCost
-        sumReqCost += maxTokens*reqCost #cost of final request output
-        fullReqCost = requestTokens*reqCost
-    response = openai.Completion.create(engine=model,
-                                                prompt=convo,
-                                                temperature=temperature,
-                                                max_tokens=maxTokens)
-    response = response.choices[0].text.strip()
-    response = response.split(":")[0].split("\n")[0].strip()
-    convo += response+f"\n{username}: "
-    return convo,response
-
-def readFile(filename):
-    f = open(filename,"r")
-    out = f.read()
-    f.close()
-    return out
-
 def getName(entity: str) -> tuple[str,str]:
-    fullName = input(f"{entity} name: ")
-    first = fullName.split(" ")[0]
-    return fullName,first
+    return input(f"{entity} name: ")
 
 def main(argv: list[str]):
     file = "openAIkey.txt"
@@ -85,39 +16,25 @@ def main(argv: list[str]):
         elif opt in ("k","--key"):
             file = arg
     openai.api_key = readFile(file).strip()
-    username,userFirst = getName("User")
-    botname,_ = getName("Bot")
+    username = getName("User")
+    botname  = getName("Bot")
     #Using full bot name seems to give better responses
-    filename = f"{username}-{botname}"
-    if os.path.exists(filename):
-        convo = readFile(filename)
-    else:
-        botrole = input(f"Intro string: Conversation between {username} and ")
-        convo = f"{username} is talking to {botrole}\n{userFirst}: "
-    userIn = input(convo)
     model = "davinci"
     sumModel = "gpt-3.5-turbo"
-    encoding = tiktoken.encoding_for_model(model)
-    sumEncoding = tiktoken.encoding_for_model(sumModel)
+    convo = Convo(username,botname,model,sumModel)
+    userIn = convo.getInput()
     while not ("/exit" in userIn):
         if userIn[:2] == "/c":
-            splitConvo = convo.split("\n")
-            convo = splitConvo[:-2]
-            print(f"{botname}: {userIn[2:].strip()}")
-            convo += [f"{botname}: {userIn[2:].strip()}"]+splitConvo[-1:]
-            convo = "\n".join(convo)
+            convo.correct(userIn[2:].strip())
         elif userIn[:2] == "/h":
             print(HELP)
         elif userIn[:2] == "/p":
             print(convo)
         else:
-            convo += userIn+f"\n{botname}: "
-            convo,response = getResponse(convo,userFirst,botname,model,sumModel,encoding,sumEncoding)
-            print(f"{botname}: {response}")
-        userIn = input(convo.split("\n")[-1])
-    f = open(filename, "w")
-    f.write(convo)
-    f.close()
+            convo.getResponse()
+        userIn = convo.getInput()
+    convo.close()
+    
 
 if __name__ == "__main__":
     out = main(sys.argv[1:])
